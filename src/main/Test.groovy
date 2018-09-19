@@ -1,3 +1,4 @@
+/*
 import groovy.util.logging.Log
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -6,12 +7,10 @@ import org.jsoup.select.Elements
 import org.openqa.selenium.By
 import org.openqa.selenium.Dimension
 import org.openqa.selenium.JavascriptExecutor
-import org.openqa.selenium.Keys
 import org.openqa.selenium.WebDriver
 import org.openqa.selenium.WebElement
 import org.openqa.selenium.chrome.ChromeDriver
 import org.openqa.selenium.chrome.ChromeOptions
-import org.openqa.selenium.firefox.FirefoxDriver
 import org.openqa.selenium.phantomjs.PhantomJSDriver
 import org.openqa.selenium.phantomjs.PhantomJSDriverService
 import org.openqa.selenium.remote.DesiredCapabilities
@@ -59,15 +58,17 @@ class Test {
 
         return new PhantomJSDriver(dcaps);
     }
-    /**
+    */
+/**
      * 打开谷歌浏览器，返回一个WebDriver，对浏览器的操作通过webDriver来执行
      *
      * @param url
      * @return
-     */
+     *//*
+
     static WebDriver getChromeDriver() {
         //设置谷歌浏览器驱动，我放在项目的路径下，这个驱动可以帮你打开本地的谷歌浏览器
-        System.setProperty("webdriver.chrome.driver", "chromedriver1.exe");
+        System.setProperty("webdriver.chrome.driver", "chromedriver.2.42.exe");
         // 设置对谷歌浏览器的初始配置  开始
         HashMap<String, Object> prefs = new HashMap<String, Object>();
         //设置禁止图片
@@ -109,7 +110,7 @@ class Test {
         return webElement
     }
 
-    static void login(Wait<WebDriver> wait, String usernameStr, String passwordStr) {
+    static void login(WebDriver driver, Wait<WebDriver> wait, String usernameStr, String passwordStr) {
         WebElement username = getWebElement(wait, "username")
         username.clear()
         username.sendKeys(usernameStr)
@@ -119,44 +120,53 @@ class Test {
         password.sendKeys(passwordStr)
 
         WebElement login = getWebElementByClass(wait, "btn_submit")
-        login.click()
-
+        click(driver, login)
     }
 
     // task
     static void doTask(WebDriver driver, Wait<WebDriver> wait, String level, Map<String, Map<String, Object>> initRsMap, String key) {
         Map<String, Object> build = initRsMap.get(key)
+        if (!initRsMap) {
+            println("[ERROR] initRsMap is null")
+        }
         // (["level": level, "href": href, "isUpgrade": isUpgrade] as Map)
         if ((!build.href) || !(build.isUpgrade as Boolean) || (level && Integer.valueOf(build.level as String) >= Integer.valueOf(level))) {
             println("[ERROR] build: ${build}")
             return;
         }
-        try {
 
-            // js
-            String js = "mask.loadInfo('$build.href', {})" as String
-            ((JavascriptExecutor) driver).executeScript(js)
-            Thread.sleep(1000 * 1) //显示等待页面加载完
-            //切换弹框
-            driver.switchTo().defaultContent();
-            //Exception in thread "main" org.openqa.selenium.NoSuchElementException:
-//        Closure<List<WebElement>> findElement={WebDriver d, Wait<WebDriver> w->
-            List<WebElement> list = wait.until(new Function<WebDriver, List<WebElement>>() {
-                List<WebElement> apply(WebDriver dr) {
-                    return dr.findElement(By.className("new_box_c_b")).findElements(By.tagName("a"))
-                }
-            })
-            if (list.size() < 2) {
-                println("[error] task: $build, is running")
+        // js
+        String js = "mask.loadInfo('$build.href', {})" as String
+        ((JavascriptExecutor) driver).executeScript(js)
+        Thread.sleep(1000 * 1) //显示等待页面加载完
+        //切换弹框
+        driver.switchTo().defaultContent();
+        //Exception in thread "main" org.openqa.selenium.NoSuchElementException:
+//          Closure<List<WebElement>> findElement={WebDriver d, Wait<WebDriver> w->
+        List<WebElement> list = wait.until(new Function<WebDriver, List<WebElement>>() {
+            List<WebElement> apply(WebDriver dr) {
+                return dr.findElement(By.className("new_box_c_b")).findElements(By.tagName("a"))
             }
-            list.get(0).click()
-            Thread.sleep(1000 * 1) //显示等待页面加载完
-            driver.switchTo().defaultContent()
-            Thread.sleep(1000 * 2) //显示等待页面加载完
-        } catch (Exception e) {
-            println("[ERROR] doTask: ${e.message}")
-            doTask(driver, wait, level, initRsMap, key)
+        })
+        if (list.size() < 2) {
+            println("[error] task: $build, is running")
         }
+        click(driver, list.get(0))
+        driver.switchTo().defaultContent()
+        Thread.sleep(1000 * 2) //显示等待页面加载完
+    }
+
+    static void click(WebDriver driver, WebElement element) {
+        try {
+            element.click()
+            Thread.sleep(1000 * 1) //显示等待页面加载完
+        } catch (Exception e) {
+            Thread.sleep(1000 * 2) //显示等待页面加载完
+            println("[ERROR] click")
+            driver.switchTo().defaultContent()
+            click(driver, element)
+        }
+
     }
 
     static void doInit(WebDriver driver, FluentWait<WebDriver> wait) {
@@ -169,9 +179,10 @@ class Test {
                     return dr.findElement(By.className("lbAction"))
                 }
             })
-            initBtn.click()
+            click(driver, initBtn)
         } catch (Exception e) {
             println("[ERROR] doInit: ${e.message}")
+            Thread.sleep(1000 * 3)
             doInit(driver, wait)
         }
 
@@ -214,6 +225,7 @@ class Test {
         return resourceMap
     }
 
+
     static Map<String, Map<String, Object>> initCityMap(String pageHtml) {
         Map<String, Map<String, Object>> cityMap = ([:] as Map)
         Document doc = Jsoup.parse(pageHtml, "UTF-8")
@@ -234,6 +246,22 @@ class Test {
         return cityMap
     }
 
+    static <T> T invoke(WebDriver driver, Closure<T> handler) {
+        String pageHtml = driver.getPageSource()
+        Object resourceMap = handler(pageHtml)
+        while (!resourceMap) {
+            Thread.sleep(1000 * 1)
+            pageHtml = driver.getPageSource()
+            resourceMap = handler(pageHtml)
+            if (resourceMap) {
+                break
+            }
+        }
+        return resourceMap
+
+    }
+
+
     public static void main(String[] args) {
         WebDriver driver = getChromeDriver()
 //        WebDriver driver = getPhantomJs()
@@ -243,7 +271,7 @@ class Test {
                 .pollingEvery(5, TimeUnit.SECONDS)
 //                .ignoring(NoSuchElementException.class)
         //登录
-        login(wait, "bamboo666", "wbb123")
+        login(driver, wait, "bamboo666", "wbb123")
 
         if (driver.getPageSource().contains("密码错误")) {
             println("[error] 密码错误")
@@ -267,19 +295,19 @@ class Test {
                                   "内政厅"] as List<String>)
         cityList.remove("行宫")
         while (true) {
-            String level = "4"
+            String level = "3"
             // init city_build_resource_a
             switchUI(wait, "city_build_resource_a")
-            String pageHtml = driver.getPageSource()
+            Map<String, Map<String, Object>> resourceMap = invoke(driver, Handler.initRsMaphandler)
 
-            Map<String, Map<String, Object>> resourceMap = initRsMap(pageHtml)
             for (def key : resourceList) {
                 doTask(driver, wait, level, resourceMap, key)
             }
             // init city_build_building_a
             switchUI(wait, "city_build_building_a")
-            pageHtml = driver.getPageSource()
-            Map<String, Map<String, Object>> cityMap = initCityMap(pageHtml)
+
+            Map<String, Map<String, Object>> cityMap = invoke(driver, Handler.initCityMaphandler)
+
             for (def cityKey : cityList) {
                 doTask(driver, wait, level, cityMap, cityKey)
             }
@@ -292,3 +320,48 @@ class Test {
 
 
 }
+
+class Handler {
+    public static Closure initCityMaphandler = {
+        String pageHtml ->
+            Map<String, Map<String, Object>> cityMap = ([:] as Map)
+            Document doc = Jsoup.parse(pageHtml, "UTF-8")
+            Elements rxs = doc.getElementsByClass("sg_jza_bg");
+            for (int i = 0; i < rxs.size(); i++) {
+                Element rx = rxs.get(i)
+                String level = rx.getElementsByClass("sg_jza_lv").text()
+                Document msg = Jsoup.parse(rx.select('img.TS').first().attr("msg"), "UTF-8")
+                String title = msg.getElementsByClass("sg_jz_a_title").text()
+                title = title.substring(0, title.indexOf(" (")).trim().replace("蜀国", "")
+                        .replace("吴国", "")
+                        .replace("魏国", "")
+                Elements js = rx.getElementsByClass("sg_jza_j").select("a[href]")
+                boolean isUpgrade = js.size() == 0 ? false : true
+                String href = isUpgrade ? js.first().attr("href") : "#"
+                cityMap[title] = (["level": level, "href": href, "isUpgrade": isUpgrade] as Map)
+            }
+            return cityMap
+    }
+
+    public static Closure initRsMaphandler = {
+        String pageHtml ->
+            Map<String, Map<String, Object>> resourceMap = ([:] as Map)
+            Document doc = Jsoup.parse(pageHtml, "UTF-8")
+            Elements rxs = doc.getElementsByClass("sg_jza_box");
+            rxs.addAll(doc.getElementsByClass("sg_jza_boxend"))
+            for (int i = 0; i < rxs.size(); i++) {
+                Element rx = rxs.get(i)
+                Elements rys = rx.getElementsByClass("sg_jza_bg");
+                for (int j = 0; j < rys.size(); j++) {
+                    Element ry = rys.get(j)
+                    String level = ry.getElementsByClass("sg_jza_lv").text()
+                    Elements js = ry.getElementsByClass("sg_jza_j").select("a[href]")
+                    boolean isUpgrade = js.size() == 0 ? false : true
+                    String href = isUpgrade ? js.first().attr("href") : "#"
+                    resourceMap["${i}:${j}" as String] = (["level": level, "href": href, "isUpgrade": isUpgrade] as Map)
+                }
+            }
+            return resourceMap
+    }
+
+}*/
